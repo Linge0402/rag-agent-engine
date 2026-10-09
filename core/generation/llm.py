@@ -20,7 +20,9 @@ import httpx
 from core.config import Settings
 from core.service.schemas import Answer, Chunk, Citation
 
-_CITATION_RE = re.compile(r"【([A-Za-z0-9_\-]+)】")
+# 提取【...】标注：chunk_id 允许任意非"】"字符（含中文 doc_id）；
+# 合法性不依赖正则，由 build_answer 的召回集合成员校验兜底（严格模式）。
+_CITATION_RE = re.compile(r"【([^】]+)】")
 
 
 @runtime_checkable

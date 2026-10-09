@@ -58,6 +58,27 @@ def test_extract_cited_ids_ordered_dedup():
     assert extract_cited_ids(text) == ["minfadian-c003", "minfadian-c007"]
 
 
+def test_extract_cited_ids_with_chinese_doc_id():
+    """真实场景回归：doc_id 含中文（如"民法典-总则编节选"）时标注也要能提取。"""
+    text = "诉讼时效为三年【民法典-总则编节选-c002】。"
+    assert extract_cited_ids(text) == ["民法典-总则编节选-c002"]
+
+
+def test_shortened_citation_treated_as_fabricated():
+    """LLM 简写 chunk_id（如【c002】）属于编造引用，必须 needs_review。"""
+    chunks = [
+        Chunk(
+            chunk_id="民法典-总则编节选-c002",
+            doc_id="民法典-总则编节选",
+            text="第一百八十八条 诉讼时效期间为三年。",
+            metadata=ChunkMetadata(source="民法典-总则编节选.md"),
+        )
+    ]
+    answer = build_answer("诉讼时效为三年【c002】。", chunks, latency_ms=100)
+    assert answer.status == "needs_review"
+    assert answer.citations == []
+
+
 def test_build_answer_with_valid_citations():
     answer = build_answer("期间为三年【minfadian-c003】。", CHUNKS, latency_ms=100)
     assert answer.status == "answered"
