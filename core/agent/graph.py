@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
@@ -96,7 +96,12 @@ def _render_history(history: list[dict[str, str]]) -> str:
 
 @dataclass
 class AgentDeps:
-    """状态图节点的全部外部依赖，构造时注入（测试注入 Fake）。"""
+    """状态图节点的全部外部依赖，构造时注入（测试注入 Fake）。
+
+    search_filters：检索侧的 metadata 硬过滤（AND 等值条件），
+    由调用方根据领域包的 FilterSchema 构造并经 filters.py 校验后注入；
+    法律包的典型用法是 {"validity": "现行有效"}——检索层只看见现行法规。
+    """
 
     embedder: EmbeddingClient
     store: QdrantVectorStore
@@ -104,6 +109,10 @@ class AgentDeps:
     template: PromptTemplate = field(default_factory=lambda: DEFAULT_TEMPLATE)
     retrieve_top_k: int = 20
     rerank_top_k: int = 6
+    search_filters: dict[str, Any] = field(default_factory=dict)
+    # 相关性阈值：低于该向量分的召回结果丢弃；空检索 → 生成侧只能拒答。
+    # 0.0 表示不过滤。取值应基于评估集校准，不可凭空设定。
+    min_score: float = 0.0
 
 
 def build_graph(deps: AgentDeps):
@@ -141,12 +150,28 @@ def build_graph(deps: AgentDeps):
     def retrieve(state: AgentState) -> dict:
         query = state["rewritten"]
         vector = deps.embedder.embed([query])[0]
-        candidates = deps.store.search(vector, top_k=deps.retrieve_top_k)
+        candidates = deps.store.search(
+            vector, top_k=deps.retrieve_top_k, filters=deps.search_filters
+        )
+        if deps.min_score > 0.0:
+            candidates = [c for c in candidates if c.score >= deps.min_score]
         top = rerank(query, candidates, top_k=deps.rerank_top_k)
         return {"retrieved": top}
 
     def generate(state: AgentState) -> dict:
         chunks = [hit.chunk for hit in state["retrieved"]]
+        if not chunks:
+            # 空检索（如低于相关性阈值）→ 确定性拒答，不浪费 LLM 调用
+            return {
+                "answer": Answer(
+                    text="抱歉，知识库中没有找到与您问题相关的法规条文，无法可靠回答。"
+                    "您可以换个问法，或补充问题涉及的法律领域。",
+                    citations=[],
+                    confidence=0.9,
+                    status="refused",
+                    latency_ms=0,
+                )
+            }
         messages = build_messages(deps.template, chunks, state["rewritten"])
         start = time.perf_counter()
         text = deps.llm.chat(messages, temperature=TEMPERATURE_LEGAL)

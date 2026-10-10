@@ -1,0 +1,62 @@
+{
+  "eval_set": "legal-baseline",
+  "cases": 8,
+  "metrics": {
+    "hit_rate": 1.0,
+    "mrr": 1.0,
+    "citation_accuracy": 1.0,
+    "refusal_accuracy": 1.0
+  },
+  "rows": [
+    {
+      "question": "向人民法院请求保护民事权利的诉讼时效是多久？",
+      "hit@k": 1.0,
+      "rr": 1.0,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "自然人的民事权利能力从什么时候开始？",
+      "hit@k": 1.0,
+      "rr": 1.0,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "几周岁以上的未成年人是限制民事行为能力人？",
+      "hit@k": 1.0,
+      "rr": 1.0,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "离婚后不满两周岁的子女由谁直接抚养？",
+      "hit@k": 1.0,
+      "rr": 1.0,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "有限责任公司的股东以什么为限对公司承担责任？",
+      "hit@k": 1.0,
+      "rr": 1.0,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "有限责任公司股东的认缴出资应在几年内缴足？",
+      "hit@k": 1.0,
+      "rr": 1.0,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "盗窃公私财物要判几年？",
+      "refusal_ok": true
+    },
+    {
+      "question": "美国的公司治理结构和我国公司法有什么差异？",
+      "refusal_ok": true
+    }
+  ]
+}

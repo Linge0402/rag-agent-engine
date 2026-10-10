@@ -31,20 +31,32 @@ def point_id(chunk_id: str) -> str:
 
 
 def payload_key(name: str) -> str:
-    """过滤字段名 → payload 路径。内置字段与 extra 扩展字段分开寻址。"""
+    """过滤字段名 → payload 路径。内置字段与 extra 扩展字段分开寻址。
+
+    接受两种写法："law_id" 或 "extra.law_id"（FilterField 声明用后者，
+    见 core/service/schemas.py），映射结果一致。
+    """
     if name in _METADATA_FIELDS:
         return f"metadata.{name}"
+    if name.startswith("extra."):
+        name = name[len("extra.") :]
     return f"metadata.extra.{name}"
 
 
 def build_filter(conditions: dict[str, Any]) -> models.Filter | None:
-    """等值条件字典 → Qdrant Filter（各条件之间为 AND）。"""
+    """等值条件字典 → Qdrant Filter（各条件之间为 AND；值为列表时表示任一命中）。"""
     if not conditions:
         return None
-    must = [
-        models.FieldCondition(key=payload_key(name), match=models.MatchValue(value=value))
-        for name, value in conditions.items()
-    ]
+    must = []
+    for name, value in conditions.items():
+        if isinstance(value, list):
+            must.append(
+                models.FieldCondition(key=payload_key(name), match=models.MatchAny(any=value))
+            )
+        else:
+            must.append(
+                models.FieldCondition(key=payload_key(name), match=models.MatchValue(value=value))
+            )
     return models.Filter(must=must)
 
 

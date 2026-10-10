@@ -1,0 +1,36 @@
+# 法律领域评估集：法条定位 / 时效判断 / 边界问题
+# expected_chunk_ids 为确定性 chunk_id（{law_id}-t{条号:04d}）
+name: legal-baseline
+cases:
+  # ---- 法条定位：问题应检索到指定条文，且答案包含关键要点 ----
+  - question: 向人民法院请求保护民事权利的诉讼时效是多久？
+    expected_chunk_ids: [minfadian-t0188]
+    expected_answer_contains: ["三年"]
+    notes: 民法典第一百八十八条，总则编·诉讼时效章
+  - question: 自然人的民事权利能力从什么时候开始？
+    expected_chunk_ids: [minfadian-t0013]
+    expected_answer_contains: ["出生"]
+    notes: 民法典第十三条
+  - question: 几周岁以上的未成年人是限制民事行为能力人？
+    expected_chunk_ids: [minfadian-t0019]
+    expected_answer_contains: ["八周岁"]
+    notes: 民法典第十九条
+  - question: 离婚后不满两周岁的子女由谁直接抚养？
+    expected_chunk_ids: [minfadian-t1084]
+    expected_answer_contains: ["母亲"]
+    notes: 民法典第一千零八十四条，婚姻家庭编
+  - question: 有限责任公司的股东以什么为限对公司承担责任？
+    expected_chunk_ids: [gongsifa-2023-t0004]
+    expected_answer_contains: ["认缴的出资额"]
+    notes: 公司法（2023）第四条；检索应命中现行有效版而非 2018 版
+  - question: 有限责任公司股东的认缴出资应在几年内缴足？
+    expected_chunk_ids: [gongsifa-2023-t0047]
+    expected_answer_contains: ["五年"]
+    notes: 公司法（2023）第四十七条，新法新增五年实缴期限
+  # ---- 边界问题：知识库无法支撑，应当拒答 ----
+  - question: 盗窃公私财物要判几年？
+    should_refuse: true
+    notes: 刑法未入库；合格行为是拒答并说明知识库范围，而非凭印象回答
+  - question: 美国的公司治理结构和我国公司法有什么差异？
+    should_refuse: true
+    notes: 域外制度不在知识库范围；应拒答而非泛泛而谈

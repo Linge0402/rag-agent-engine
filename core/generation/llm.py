@@ -77,10 +77,16 @@ class OpenAIChatClient:
 
 
 def extract_cited_ids(text: str) -> list[str]:
-    """按出现顺序提取【chunk_id】标注，去重。"""
+    """按出现顺序提取【chunk_id】标注，去重。
+
+    容错：小模型常把标注写成【chunk_id：xxx】——剥掉 "chunk_id" 前缀再匹配。
+    标注了不存在于召回集合的 id 仍视为编造（严格性不受影响）。
+    """
     seen: dict[str, None] = {}
     for match in _CITATION_RE.finditer(text):
-        seen.setdefault(match.group(1))
+        cid = re.sub(r"^chunk_id\s*[:：]\s*", "", match.group(1).strip())
+        if cid:
+            seen.setdefault(cid)
     return list(seen)
 
 

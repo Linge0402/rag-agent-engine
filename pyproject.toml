@@ -5,10 +5,12 @@ description = "引擎 + 领域包架构的开源 Agentic RAG：核心引擎沉�
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "beautifulsoup4>=4.15.0",
     "httpx>=0.28.1",
     "langgraph>=1.2.14",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
+    "pyyaml>=6.0.3",
     "qdrant-client>=1.19.1",
 ]
 
