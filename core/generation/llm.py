@@ -27,9 +27,13 @@ _CITATION_RE = re.compile(r"【([^】]+)】")
 
 @runtime_checkable
 class LLMClient(Protocol):
-    """chat 补全。messages 为 OpenAI chat 格式，返回助手文本。"""
+    """chat 补全。messages 为 OpenAI chat 格式，返回助手文本。
 
-    def chat(self, messages: list[dict[str, str]]) -> str: ...
+    temperature 为单次调用级覆盖：None 时用客户端默认。
+    用法约定：法律生成 0.0（稳定可核验），闲聊 0.7（自然多变）。
+    """
+
+    def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str: ...
 
 
 class OpenAIChatClient:
@@ -58,13 +62,13 @@ class OpenAIChatClient:
             **kwargs,
         )
 
-    def chat(self, messages: list[dict[str, str]]) -> str:
+    def chat(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         resp = self._client.post(
             f"{self._base_url}/chat/completions",
             json={
                 "model": self._model,
                 "messages": messages,
-                "temperature": self._temperature,
+                "temperature": self._temperature if temperature is None else temperature,
             },
             headers=self._headers,
         )

@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from core.agent.graph import AgentDeps, build_graph
+from core.agent.memory import Memory
 from core.chunking.structural import StructuralChunkStrategy
 from core.config import get_settings
 from core.generation.llm import OpenAIChatClient
@@ -52,6 +53,7 @@ def main() -> int:
 
     print("法律知识助手（仅供参考，不构成法律意见）。输入 exit 退出。\n")
     history: list[dict[str, str]] = []
+    memory = Memory()  # 长期记忆：跨会话窗口记住用户事实
     while True:
         try:
             question = input("你: ").strip()
@@ -64,7 +66,8 @@ def main() -> int:
             print("再见！")
             break
 
-        state = graph.invoke({"question": question, "history": history})
+        state = graph.invoke({"question": question, "history": history, "facts": memory.facts})
+        memory.facts = state.get("facts", memory.facts)
 
         if state.get("answer") is not None:
             answer = state["answer"]
