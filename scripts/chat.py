@@ -60,6 +60,11 @@ def main() -> int:
         report = ingest_paths(paths, pack.parsers(), pack.chunk_strategy(), embedder, store)
         print(f"[入库] {report.docs} 个文档 → {report.chunks} 个 chunk\n")
 
+    tools = {t.name: t for t in pack.tools()}
+    ctx = QueryContext(
+        session_id="chat", pack_name=pack.name, pack_filter_schema=pack.filter_schema()
+    )
+
     graph = build_graph(
         AgentDeps(
             embedder=embedder,
@@ -70,12 +75,9 @@ def main() -> int:
             rerank_top_k=settings.rerank_top_k,
             search_filters=build_search_filters(pack),
             min_score=MIN_RETRIEVAL_SCORE,
+            tools=tools,  # 注入工具表后，Agent 自行决定检索还是调工具
+            tool_ctx=ctx,
         )
-    )
-
-    tools = {t.name: t for t in pack.tools()}
-    ctx = QueryContext(
-        session_id="chat", pack_name=pack.name, pack_filter_schema=pack.filter_schema()
     )
 
     print("法律知识助手（仅供参考，不构成法律意见）。")

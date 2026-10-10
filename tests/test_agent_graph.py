@@ -1,13 +1,26 @@
-"""Agent 状态图测试：意图路由三分流 + 法律路径端到端 + 记忆/改写节点（Fake 组件）。
+"""Agent 状态图测试：意图路由三分流 + 法律路径端到端 + 记忆/改写/工具节点（Fake 组件）。
 
 各路径的 LLM 调用次数（ScriptedLLM 响应队列长度要一一对应）：
 - 闲聊：route → chitchat → update_memory = 3 次
-- 法律（无历史）：route → generate → update_memory = 3 次（rewrite 无历史时透传，不调 LLM）
+- 法律（无历史、无工具）：route → generate → update_memory = 3 次
+  （rewrite 无历史时透传；deps.tools 为空时 plan 直接走检索，都不调 LLM）
 - 法律（有历史）：route → rewrite → generate → update_memory = 4 次
+- 法律（有工具表）：route → plan → generate → update_memory = 4 次
+- 法律（决策调工具）：route → plan → answer_from_tool → update_memory = 4 次
 - 敏感：route → update_memory = 2 次
 """
 
-from core.agent.graph import DISCLAIMER, SENSITIVE_REFUSAL, AgentDeps, build_graph, parse_intent
+from pydantic import BaseModel
+
+from core.agent.graph import (
+    DISCLAIMER,
+    SENSITIVE_REFUSAL,
+    AgentDeps,
+    build_graph,
+    parse_intent,
+    parse_plan,
+)
+from core.agent.tools import QueryContext, ToolResult
 from core.indexing.vector_store import ScoredChunk
 from core.service.schemas import Chunk, ChunkMetadata
 
@@ -57,12 +70,38 @@ LEGAL_CHUNK = Chunk(
 )
 
 
-def make_deps(llm: ScriptedLLM, chunks: list[Chunk] | None = None) -> AgentDeps:
+def make_deps(llm: ScriptedLLM, chunks: list[Chunk] | None = None, **kwargs) -> AgentDeps:
     return AgentDeps(
         embedder=FakeEmbedder(),
         store=FakeStore(chunks if chunks is not None else [LEGAL_CHUNK]),
         llm=llm,
+        **kwargs,
     )
+
+
+# ---------------------------------------------------------------------------
+# Fake 工具
+# ---------------------------------------------------------------------------
+
+
+class FakeToolArgs(BaseModel):
+    law_name: str
+
+
+class FakeTool:
+    """记录调用参数的 Fake 工具。"""
+
+    name = "check_validity"
+    description = "查询法规时效状态"
+    args_schema = FakeToolArgs
+
+    def __init__(self, result: ToolResult | None = None):
+        self.calls: list[BaseModel] = []
+        self._result = result or ToolResult(data={"validity": "现行有效"})
+
+    async def run(self, args: BaseModel, ctx: QueryContext) -> ToolResult:
+        self.calls.append(args)
+        return self._result
 
 
 # ---------------------------------------------------------------------------
@@ -223,3 +262,115 @@ def test_rewrite_skips_llm_when_no_history():
     assert state["rewritten"] == "诉讼时效多久？"
     assert deps.embedder.embedded == ["诉讼时效多久？"]
     assert len(llm.calls) == 3
+
+
+# ---------------------------------------------------------------------------
+# plan 决策解析
+# ---------------------------------------------------------------------------
+
+
+def test_parse_plan_retrieve():
+    assert parse_plan('{"action": "retrieve"}', {"check_validity"}) == {"action": "retrieve"}
+
+
+def test_parse_plan_tool_call():
+    raw = '```json\n{"action": "tool", "tool": "check_validity", "args": {"law_name": "公司法"}}\n```'
+    assert parse_plan(raw, {"check_validity"}) == {
+        "action": "tool",
+        "tool": "check_validity",
+        "args": {"law_name": "公司法"},
+    }
+
+
+def test_parse_plan_fallback_to_retrieve():
+    """坏 JSON、未知工具、缺 args —— 一律回退检索（安全默认）。"""
+    assert parse_plan("随便什么输出", {"check_validity"}) == {"action": "retrieve"}
+    assert parse_plan('{"action": "tool", "tool": "hack", "args": {}}', {"check_validity"}) == {
+        "action": "retrieve"
+    }
+    assert parse_plan('{"action": "tool", "tool": "check_validity"}', {"check_validity"}) == {
+        "action": "retrieve"
+    }
+
+
+# ---------------------------------------------------------------------------
+# 工具调用链路
+# ---------------------------------------------------------------------------
+
+
+def test_tool_path_full_chain():
+    """决策调工具：plan → tool_exec → answer_from_tool；工具参数正确透传。"""
+    tool = FakeTool()
+    llm = ScriptedLLM(
+        [
+            "legal",
+            '{"action": "tool", "tool": "check_validity", "args": {"law_name": "公司法"}}',
+            "公司法（2023年修订）现行有效，2024年7月1日起施行。",
+            "无",
+        ]
+    )
+    deps = make_deps(llm, tools={tool.name: tool})
+    graph = build_graph(deps)
+
+    state = graph.invoke({"question": "公司法现在还有效吗？", "history": []})
+
+    assert len(tool.calls) == 1
+    assert tool.calls[0].law_name == "公司法"
+    answer = state["answer"]
+    assert answer.status == "answered"
+    assert "现行有效" in answer.text
+    assert len(llm.calls) == 4  # route + plan + answer_from_tool + memory
+
+
+def test_tool_error_becomes_refusal():
+    """工具失败 → 确定性拒答，不再调 LLM 编答案。"""
+    tool = FakeTool(result=ToolResult(error="知识库中未收录「刑法」"))
+    llm = ScriptedLLM(
+        [
+            "legal",
+            '{"action": "tool", "tool": "check_validity", "args": {"law_name": "刑法"}}',
+            "无",
+        ]
+    )
+    deps = make_deps(llm, tools={tool.name: tool})
+    graph = build_graph(deps)
+
+    state = graph.invoke({"question": "刑法还有效吗？", "history": []})
+
+    answer = state["answer"]
+    assert answer.status == "refused"
+    assert "未收录" in answer.text
+
+
+def test_plan_retrieve_goes_normal_path():
+    """有工具表但决策检索：走正常检索链路（route+plan+generate+memory = 4 次）。"""
+    tool = FakeTool()
+    llm = ScriptedLLM(
+        [
+            "legal",
+            '{"action": "retrieve"}',
+            "诉讼时效期间为三年【民法典-c001】。",
+            "无",
+        ]
+    )
+    deps = make_deps(llm, tools={tool.name: tool})
+    graph = build_graph(deps)
+
+    state = graph.invoke({"question": "诉讼时效多久？", "history": []})
+
+    assert state["answer"].status == "answered"
+    assert len(tool.calls) == 0  # 没调工具
+    assert len(llm.calls) == 4
+
+
+def test_plan_garbage_falls_back_to_retrieve():
+    """plan 输出无法解析 → 回退检索，问答不中断。"""
+    tool = FakeTool()
+    llm = ScriptedLLM(["legal", "我不知道该干嘛", "诉讼时效期间为三年【民法典-c001】。", "无"])
+    deps = make_deps(llm, tools={tool.name: tool})
+    graph = build_graph(deps)
+
+    state = graph.invoke({"question": "诉讼时效多久？", "history": []})
+
+    assert state["answer"].status == "answered"
+    assert len(tool.calls) == 0

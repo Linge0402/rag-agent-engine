@@ -90,6 +90,11 @@ def extract_cited_ids(text: str) -> list[str]:
     return list(seen)
 
 
+def strip_citation_markers(text: str) -> str:
+    """剥除文本中的全部【...】引用标注（用于无 chunk 可核验的工具数据回答）。"""
+    return _CITATION_RE.sub("", text)
+
+
 def build_answer(
     text: str,
     retrieved: list[Chunk],
