@@ -12,7 +12,12 @@
 
 ## 状态
 
-W1a —— 仓库骨架与核心抽象（`KnowledgePack` / `ChunkStrategy` / `Tool`）已就位，实现进行中。
+W2 进行中 —— 端到端链路已点亮（入库 → 检索 → 带引用回答 → 严格校验）；
+LangGraph 意图路由已接入：闲聊 / 法律问答 / 敏感拒答三分流。
+
+```bash
+uv run python scripts/chat.py data/demo   # 终端法律问答机器人
+```
 
 ## 开发
 
