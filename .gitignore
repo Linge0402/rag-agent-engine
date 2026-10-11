@@ -21,6 +21,8 @@ htmlcov/
 # OS
 .DS_Store
 
-# Data & artifacts（本地数据、索引、报告不进仓库）
-data/
+# Data & artifacts
+# 公开语料（法规文本、官方文档）进仓库，保证 clone 即可跑、评估可复现；
+# 大模型权重与运行产物不进仓库。
+data/models/
 artifacts/
