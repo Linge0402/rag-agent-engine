@@ -13,7 +13,6 @@
 from pydantic import BaseModel
 
 from core.agent.graph import (
-    DISCLAIMER,
     SENSITIVE_REFUSAL,
     AgentDeps,
     build_graph,
@@ -23,6 +22,7 @@ from core.agent.graph import (
 from core.agent.tools import QueryContext, ToolResult
 from core.indexing.vector_store import ScoredChunk
 from core.service.schemas import Chunk, ChunkMetadata
+from packs.legal import DISCLAIMER
 
 # ---------------------------------------------------------------------------
 # Fake 组件
@@ -71,6 +71,7 @@ LEGAL_CHUNK = Chunk(
 
 
 def make_deps(llm: ScriptedLLM, chunks: list[Chunk] | None = None, **kwargs) -> AgentDeps:
+    kwargs.setdefault("disclaimer", DISCLAIMER)  # 法律路径测试默认带免责声明
     return AgentDeps(
         embedder=FakeEmbedder(),
         store=FakeStore(chunks if chunks is not None else [LEGAL_CHUNK]),

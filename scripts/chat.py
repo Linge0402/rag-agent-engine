@@ -1,18 +1,20 @@
-"""终端法律问答机器人（法律领域包）。
+"""终端知识库问答机器人：一个引擎，多个领域包。
 
 用法：
-    uv run python scripts/chat.py [法规目录]   # 默认 data/legal
+    uv run python scripts/chat.py [--pack legal|devdocs] [文档目录]
 
-- 首次运行会先入库（幂等，重复运行不会重复入库）；
-- 检索默认硬过滤"现行有效"——过期法规留在库里供对比工具使用，
-  但不进入检索视野（见 packs/legal/__init__.py）；
+- 每个领域包一个独立 collection（按包名命名），首次运行自动入库（幂等）；
+- 检索过滤与相关性阈值由各 pack 声明（如法律包"现行有效"硬过滤）；
+- 注入工具表后，Agent 自行决定"检索知识库"还是"调用领域工具"；
 - 多轮对话：最近 5 轮窗口 + 长期事实记忆；
 - 输入 exit / quit / 退出 结束。
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -25,18 +27,41 @@ from core.indexing.embeddings import OpenAIEmbeddingClient
 from core.indexing.ingestion import ingest_paths
 from core.indexing.vector_store import QdrantVectorStore
 from core.retrieval.filters import FilterCondition, FilterSet
-from packs.legal import DATA_DIR, DEFAULT_RETRIEVAL_FILTERS, MIN_RETRIEVAL_SCORE, LegalPack
+from packs import devdocs, legal
 
-CHAT_COLLECTION = "legal"
 HISTORY_TURNS = 5  # 多轮记忆窗口：保留最近 5 轮
 
+# 领域包注册表：接入新领域只需在这里加一行
+PACKS = {
+    "legal": {
+        "factory": legal.LegalPack,
+        "data_dir": legal.DATA_DIR,
+        "default_filters": legal.DEFAULT_RETRIEVAL_FILTERS,
+        "min_score": legal.MIN_RETRIEVAL_SCORE,
+        "disclaimer": legal.DISCLAIMER,
+        "greeting": "法律知识助手（仅供参考，不构成法律意见）。",
+        "commands": {
+            "/时效": "check_validity",
+            "/条文": "locate_article",
+            "/对比": "compare_versions",
+        },
+    },
+    "devdocs": {
+        "factory": devdocs.DevDocsPack,
+        "data_dir": devdocs.DATA_DIR,
+        "default_filters": devdocs.DEFAULT_RETRIEVAL_FILTERS,
+        "min_score": devdocs.MIN_RETRIEVAL_SCORE,
+        "disclaimer": devdocs.DISCLAIMER,
+        "greeting": "LangGraph 文档助手（基于官方文档，版本对齐本地安装）。",
+        "commands": {"/兼容": "check_version_compat"},
+    },
+}
 
-def build_search_filters(pack: LegalPack) -> dict:
+
+def build_search_filters(pack, default_filters: dict) -> dict:
     """把 pack 的默认检索过滤过一遍 DSL 校验——校验不过宁可报错也不静默放行。"""
     fs = FilterSet(
-        conditions=[
-            FilterCondition(field=k, op="eq", value=v) for k, v in DEFAULT_RETRIEVAL_FILTERS.items()
-        ]
+        conditions=[FilterCondition(field=k, op="eq", value=v) for k, v in default_filters.items()]
     )
     problems = fs.validate(pack.filter_schema())
     if problems:
@@ -45,15 +70,23 @@ def build_search_filters(pack: LegalPack) -> dict:
 
 
 def main() -> int:
-    doc_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else DATA_DIR
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--pack", choices=sorted(PACKS), default="legal", help="领域包")
+    ap.add_argument(
+        "doc_dir", nargs="?", type=Path, default=None, help="文档目录（默认取包内数据目录）"
+    )
+    args = ap.parse_args()
+
+    spec = PACKS[args.pack]
+    doc_dir = args.doc_dir or spec["data_dir"]
 
     settings = get_settings()
     embedder = OpenAIEmbeddingClient.from_settings(settings)
     llm = OpenAIChatClient.from_settings(settings)
-    store = QdrantVectorStore(settings.qdrant_url, collection=CHAT_COLLECTION, dim=embedder.dim)
+    store = QdrantVectorStore(settings.qdrant_url, collection=args.pack, dim=embedder.dim)
     store.ensure_collection()
 
-    pack = LegalPack(store=store)
+    pack = spec["factory"](store=store)
 
     paths = sorted(doc_dir.glob("**/*.md"))
     if paths:
@@ -73,15 +106,18 @@ def main() -> int:
             template=pack.prompt_template(),
             retrieve_top_k=settings.retrieve_top_k,
             rerank_top_k=settings.rerank_top_k,
-            search_filters=build_search_filters(pack),
-            min_score=MIN_RETRIEVAL_SCORE,
+            search_filters=build_search_filters(pack, spec["default_filters"]),
+            min_score=spec["min_score"],
+            disclaimer=spec["disclaimer"],
             tools=tools,  # 注入工具表后，Agent 自行决定检索还是调工具
             tool_ctx=ctx,
         )
     )
 
-    print("法律知识助手（仅供参考，不构成法律意见）。")
-    print("斜杠命令：/时效 <法规名>  /条文 <法规名> <条号>  /对比 <法规名>；输入 exit 退出。\n")
+    print(spec["greeting"])
+    if spec["commands"]:
+        print(f"斜杠命令：{'  '.join(spec['commands'])}（也可直接提问，Agent 会自行决定）")
+    print("输入 exit 退出。\n")
     history: list[dict[str, str]] = []
     memory = Memory()  # 长期记忆：跨会话窗口记住用户事实
     while True:
@@ -97,7 +133,7 @@ def main() -> int:
             break
 
         if question.startswith("/"):
-            _run_tool_command(question, tools, ctx)
+            _run_tool_command(question, tools, ctx, spec["commands"])
             continue
 
         state = graph.invoke({"question": question, "history": history, "facts": memory.facts})
@@ -122,13 +158,12 @@ def main() -> int:
     return 0
 
 
-def _run_tool_command(command: str, tools: dict, ctx: QueryContext) -> None:
-    """斜杠命令直连领域工具（绕过闲聊路由，演示工具的确性输出）。"""
+def _run_tool_command(command: str, tools: dict, ctx: QueryContext, commands: dict) -> None:
+    """斜杠命令直连领域工具（绕过 Agent 决策，演示工具的确定性输出）。"""
     parts = command.split()
-    name_map = {"/时效": "check_validity", "/条文": "locate_article", "/对比": "compare_versions"}
-    tool_name = name_map.get(parts[0])
+    tool_name = commands.get(parts[0])
     if tool_name is None or tool_name not in tools:
-        print(f"未知命令。可用：{'、'.join(name_map)}")
+        print(f"未知命令。可用：{'、'.join(commands)}")
         return
     tool = tools[tool_name]
     try:
@@ -136,8 +171,13 @@ def _run_tool_command(command: str, tools: dict, ctx: QueryContext) -> None:
             args = tool.args_schema(law_name=" ".join(parts[1:]))
         elif tool_name == "locate_article":
             args = tool.args_schema(law_name=parts[1], article_no=int(parts[2]))
-        else:
+        elif tool_name == "compare_versions":
             args = tool.args_schema(law_name=" ".join(parts[1:]))
+        elif tool_name == "check_version_compat":
+            args = tool.args_schema(library=parts[1], version=parts[2] if len(parts) > 2 else "")
+        else:
+            print(f"命令 {parts[0]} 暂未接入")
+            return
     except (IndexError, ValueError) as e:
         print(f"参数不对: {e}")
         return
@@ -148,8 +188,6 @@ def _run_tool_command(command: str, tools: dict, ctx: QueryContext) -> None:
     for chunk in result.chunks:
         print(f"{chunk.text}\n")
     if result.data:
-        import json
-
         print(json.dumps(result.data, ensure_ascii=False, indent=2))
     print()
 

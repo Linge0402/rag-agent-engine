@@ -1,4 +1,5 @@
 {
+  "pack": "legal",
   "eval_set": "legal-baseline",
   "cases": 8,
   "metrics": {

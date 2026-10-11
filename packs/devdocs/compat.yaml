@@ -1,0 +1,13 @@
+# 版本兼容数据：版本兼容查询工具的数据源。
+# 内容来自本地安装包的真实元数据（importlib.metadata.requires），
+# 新增库或升级版本时按同口径更新。
+langgraph:
+  "1.2.14":
+    requires_python: ">=3.10"
+    dependencies:
+      langchain-core: ">=1.4.7,<2"
+      langgraph-checkpoint: ">=4.1.0,<5.0.0"
+      langgraph-prebuilt: ">=1.1.0,<1.2.0"
+      langgraph-sdk: ">=0.4.6,<0.5.0"
+      pydantic: ">=2.7.4"
+      xxhash: ">=3.5.0"

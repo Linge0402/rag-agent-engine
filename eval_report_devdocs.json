@@ -1,0 +1,48 @@
+{
+  "pack": "devdocs",
+  "eval_set": "devdocs-baseline",
+  "cases": 6,
+  "metrics": {
+    "hit_rate": 1.0,
+    "mrr": 0.875,
+    "citation_accuracy": 1.0,
+    "refusal_accuracy": 1.0
+  },
+  "rows": [
+    {
+      "question": "StateGraph 怎么添加节点和边？",
+      "hit@k": 1.0,
+      "rr": 1.0,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "LangGraph 的持久化 checkpoint 怎么用？",
+      "hit@k": 1.0,
+      "rr": 0.5,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "如何实现 human-in-the-loop 人工介入？",
+      "hit@k": 1.0,
+      "rr": 1.0,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "LangGraph 支持哪些 streaming 流式输出模式？",
+      "hit@k": 1.0,
+      "rr": 1.0,
+      "refusal_ok": true,
+      "citation_acc": 1.0
+    },
+    {
+      "question": "怎么做红烧肉？"
+    },
+    {
+      "question": "PyTorch 的 DataLoader 怎么用？",
+      "refusal_ok": true
+    }
+  ]
+}

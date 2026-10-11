@@ -39,8 +39,6 @@ Intent = Literal["chitchat", "legal", "sensitive"]
 TEMPERATURE_CHITCHAT = 0.7
 TEMPERATURE_LEGAL = 0.0
 
-DISCLAIMER = "\n\n（以上回答仅供参考，不构成法律意见；具体问题请咨询执业律师。）"
-
 SENSITIVE_REFUSAL = (
     "抱歉，这个请求我无法协助。我不能帮助规避法律或可能违法的行为。"
     "如果你面临具体的法律纠纷，建议咨询执业律师获得专业帮助。"
@@ -163,6 +161,9 @@ class AgentDeps:
     # 为空时 plan 节点直接走检索，零额外 LLM 调用。
     tools: dict[str, Tool] = field(default_factory=dict)
     tool_ctx: QueryContext | None = None
+    # 回答尾部附加的领域免责声明（如法律包的"不构成法律意见"）；
+    # 由调用方按领域注入——core 不感知任何领域文案。
+    disclaimer: str = ""
 
 
 def build_graph(deps: AgentDeps):
@@ -275,12 +276,12 @@ def build_graph(deps: AgentDeps):
         latency_ms = int((time.perf_counter() - start) * 1000)
         answer = build_answer(text, result.chunks, latency_ms)
         if answer.status == "answered":
-            answer.text += DISCLAIMER
+            answer.text += deps.disclaimer
         elif result.data and not result.chunks:
             # 数据类工具（如时效校验）没有可引用的 chunk：
             # 模型常对 law_id 也顺手加【】标注，这类"引用"没有 chunk 可核验，
             # 剥除标注后按数据回答放行，而不是误判为编造引用
-            answer.text = strip_citation_markers(answer.text).strip() + DISCLAIMER
+            answer.text = strip_citation_markers(answer.text).strip() + deps.disclaimer
             answer.citations = []
             answer.status = "answered"
             answer.confidence = 0.8
@@ -292,8 +293,8 @@ def build_graph(deps: AgentDeps):
             # 空检索（如低于相关性阈值）→ 确定性拒答，不浪费 LLM 调用
             return {
                 "answer": Answer(
-                    text="抱歉，知识库中没有找到与您问题相关的法规条文，无法可靠回答。"
-                    "您可以换个问法，或补充问题涉及的法律领域。",
+                    text="抱歉，知识库中没有找到与您问题相关的资料，无法可靠回答。"
+                    "您可以换个问法，或补充更多背景信息。",
                     citations=[],
                     confidence=0.9,
                     status="refused",
@@ -306,7 +307,7 @@ def build_graph(deps: AgentDeps):
         latency_ms = int((time.perf_counter() - start) * 1000)
         answer = build_answer(text, chunks, latency_ms)
         if answer.status == "answered":
-            answer.text += DISCLAIMER
+            answer.text += deps.disclaimer
         return {"answer": answer}
 
     def update_memory(state: AgentState) -> dict:

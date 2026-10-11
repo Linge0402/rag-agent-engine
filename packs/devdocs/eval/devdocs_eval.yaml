@@ -1,0 +1,28 @@
+# 技术文档领域评估集：API 定位 / 概念问答 / 边界问题
+# expected_chunk_ids 为确定性 chunk_id（{doc_id}-cNNN，结构切分按文档顺序编号）
+name: devdocs-baseline
+cases:
+  # ---- API 定位：问题应检索到指定文档片段 ----
+  - question: StateGraph 怎么添加节点和边？
+    expected_chunk_ids: [langgraph-graph-api-c087]
+    expected_answer_contains: ["add_node"]
+    notes: Graph API 核心方法
+  - question: LangGraph 的持久化 checkpoint 怎么用？
+    expected_chunk_ids: [langgraph-persistence-c001]
+    expected_answer_contains: ["checkpointer"]
+    notes: persistence 概念页
+  - question: 如何实现 human-in-the-loop 人工介入？
+    expected_chunk_ids: [langgraph-human-in-the-loop-c021]
+    expected_answer_contains: ["interrupt"]
+    notes: HITL 页 interrupt API
+  - question: LangGraph 支持哪些 streaming 流式输出模式？
+    expected_chunk_ids: [langgraph-streaming-c001]
+    expected_answer_contains: ["stream_mode"]
+    notes: streaming 概念页
+  # ---- 边界问题：知识库无法支撑，应当拒答 ----
+  - question: 怎么做红烧肉？
+    should_refuse: true
+    notes: 与技术文档完全无关；跨语言检索分数应低于阈值
+  - question: PyTorch 的 DataLoader 怎么用？
+    should_refuse: true
+    notes: 知识库只收录了 LangGraph；应拒答并说明知识库范围

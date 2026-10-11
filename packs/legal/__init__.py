@@ -28,8 +28,12 @@ DEFAULT_RETRIEVAL_FILTERS: dict[str, str] = {"validity": "现行有效"}
 
 # 相关性阈值（bge-m3 + 当前评估集校准，2026-10-10）：
 # 相关问题 top1 分数 ≥0.75，边界问题 top1 ≤0.61；阈值取中间偏保守的 0.65。
-# 换 embedding 模型或扩评估集后必须重新校准（用 scripts/eval_legal.py 验证）。
+# 换 embedding 模型或扩评估集后必须重新校准（用 scripts/eval_pack.py 验证）。
 MIN_RETRIEVAL_SCORE = 0.65
+
+# 法律问答的固定免责声明：由脚本经 AgentDeps.disclaimer 注入生成节点，
+# core 不持有任何领域文案。
+DISCLAIMER = "\n\n（以上回答仅供参考，不构成法律意见；具体问题请咨询执业律师。）"
 
 
 class LegalPack:
